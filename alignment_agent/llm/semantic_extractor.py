@@ -650,8 +650,45 @@ Return the results in JSON format with the following structure:
         return relationships
     
     def _extract_concepts_fallback(self, text: str) -> List[Dict[str, Any]]:
-        """Fallback concept extraction."""
-        return []
+        """Fallback concept extraction using predefined building concepts."""
+        concepts = []
+        
+        # Define building concept patterns
+        concept_patterns = {
+            'STRUCTURAL': [
+                r'\b(?:structural|load[\-\s]bearing|support|foundation)\b',
+                r'\b(?:reinforcement|concrete|steel|frame)\b'
+            ],
+            'SAFETY': [
+                r'\b(?:fire[\-\s]safety|emergency|evacuation|exit)\b',
+                r'\b(?:smoke|alarm|sprinkler|detection)\b'
+            ],
+            'ACCESSIBILITY': [
+                r'\b(?:accessible|disability|wheelchair|ramp)\b',
+                r'\b(?:barrier[\-\s]free|universal[\-\s]design)\b'
+            ],
+            'ENERGY': [
+                r'\b(?:energy[\-\s]efficient|insulation|thermal)\b',
+                r'\b(?:ventilation|hvac|heating|cooling)\b'
+            ],
+            'COMPLIANCE': [
+                r'\b(?:building[\-\s]code|regulation|standard|requirement)\b',
+                r'\b(?:permit|approval|inspection|compliance)\b'
+            ]
+        }
+        
+        for category, pattern_list in concept_patterns.items():
+            for pattern in pattern_list:
+                matches = re.finditer(pattern, text, re.IGNORECASE)
+                for match in matches:
+                    concepts.append({
+                        'concept': match.group(),
+                        'category': category,
+                        'confidence': 0.7,
+                        'context': text[max(0, match.start()-50):match.end()+50]
+                    })
+        
+        return concepts
     
     def _extract_requirements_fallback(self, text: str) -> List[Dict[str, Any]]:
         """Fallback requirement extraction."""
