@@ -511,14 +511,15 @@ Return the results in JSON format with the following structure:
             cleaned_text = response_text.strip()
             
             # Check if response is too short or incomplete
-            if len(cleaned_text) < 10 or not ('{' in cleaned_text and '}' in cleaned_text):
-                logger.warning(f"Response too short or incomplete: '{cleaned_text[:100]}'")
+            if len(cleaned_text) < 10:
+                logger.warning(f"Response too short: '{cleaned_text}'")
                 return {}
             
             # Try to extract JSON from response using multiple patterns
             json_patterns = [
                 r'```json\s*({.*?})\s*```',  # JSON in code blocks
                 r'```\s*({.*?})\s*```',  # JSON in generic code blocks
+                r'({\s*"[^"]+"\s*:\s*\[[^\]]*\]\s*})',  # Simple key-array pattern
                 r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}',  # Nested JSON pattern
                 r'\{.*?\}',  # Simple JSON pattern
             ]
@@ -528,16 +529,25 @@ Return the results in JSON format with the following structure:
                 if json_match:
                     json_text = json_match.group(1) if json_match.groups() else json_match.group()
                     try:
+                        # Try to fix common JSON issues
+                        json_text = self._fix_json_format(json_text)
                         parsed_json = json.loads(json_text)
                         # Validate that the JSON has expected structure
                         if isinstance(parsed_json, dict) and len(parsed_json) > 0:
                             return parsed_json
-                    except json.JSONDecodeError:
+                    except json.JSONDecodeError as e:
+                        logger.debug(f"JSON decode error for pattern: {e}")
                         continue
+            
+            # Try to construct JSON from partial response
+            constructed_json = self._construct_json_from_partial(cleaned_text)
+            if constructed_json:
+                return constructed_json
             
             # If no JSON pattern matches, try parsing the entire response
             try:
-                parsed_json = json.loads(cleaned_text)
+                fixed_text = self._fix_json_format(cleaned_text)
+                parsed_json = json.loads(fixed_text)
                 if isinstance(parsed_json, dict):
                     return parsed_json
             except json.JSONDecodeError:
@@ -549,6 +559,79 @@ Return the results in JSON format with the following structure:
         # Log the problematic response for debugging
         logger.warning(f"Failed to parse JSON response. Raw response: '{response_text[:200]}...'")
         return {}
+    
+    def _fix_json_format(self, json_text: str) -> str:
+        """Fix common JSON formatting issues.
+        
+        Args:
+            json_text: Raw JSON text
+            
+        Returns:
+            Fixed JSON text
+        """
+        # Remove leading/trailing whitespace and newlines
+        json_text = json_text.strip()
+        
+        # Fix missing quotes around keys
+        json_text = re.sub(r'(\w+)\s*:', r'"\1":', json_text)
+        
+        # Fix trailing commas
+        json_text = re.sub(r',\s*([}\]])', r'\1', json_text)
+        
+        # Fix single quotes to double quotes
+        json_text = json_text.replace("'", '"')
+        
+        # Ensure proper JSON structure
+        if not json_text.startswith('{'):
+            json_text = '{' + json_text
+        if not json_text.endswith('}'):
+            json_text = json_text + '}'
+            
+        return json_text
+    
+    def _construct_json_from_partial(self, text: str) -> Dict[str, Any]:
+        """Construct JSON from partial response text.
+        
+        Args:
+            text: Partial response text
+            
+        Returns:
+            Constructed JSON dictionary or empty dict
+        """
+        try:
+            # Look for key patterns in the text
+            result = {}
+            
+            # Extract entities pattern
+            entities_match = re.search(r'"entities"\s*:\s*\[(.*?)\]', text, re.DOTALL)
+            if entities_match:
+                result['entities'] = []
+            
+            # Extract relationships pattern
+            relationships_match = re.search(r'"relationships"\s*:\s*\[(.*?)\]', text, re.DOTALL)
+            if relationships_match:
+                result['relationships'] = []
+            
+            # Extract concepts pattern
+            concepts_match = re.search(r'"concepts"\s*:\s*\[(.*?)\]', text, re.DOTALL)
+            if concepts_match:
+                result['concepts'] = []
+            
+            # Extract requirements pattern
+            requirements_match = re.search(r'"requirements"\s*:\s*\[(.*?)\]', text, re.DOTALL)
+            if requirements_match:
+                result['requirements'] = []
+            
+            # Extract mappings pattern
+            mappings_match = re.search(r'"mappings"\s*:\s*\[(.*?)\]', text, re.DOTALL)
+            if mappings_match:
+                result['mappings'] = []
+            
+            return result if result else {}
+            
+        except Exception as e:
+            logger.debug(f"Error constructing JSON from partial text: {e}")
+            return {}
     
     def _calculate_confidence_scores(
         self, 

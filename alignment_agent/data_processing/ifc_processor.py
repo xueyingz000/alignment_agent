@@ -122,6 +122,17 @@ class IFCProcessor:
             logger.error(f"Error processing IFC file: {e}")
             raise
     
+    def process_file(self, file_path: str) -> Dict[str, Any]:
+        """Alias for process_ifc_file method.
+        
+        Args:
+            file_path: Path to IFC file
+            
+        Returns:
+            Dictionary containing extracted IFC data
+        """
+        return self.process_ifc_file(file_path)
+    
     def _extract_entities(self, ifc_file) -> List[Dict[str, Any]]:
         """Extract entities from IFC file.
         

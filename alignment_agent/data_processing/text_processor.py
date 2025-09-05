@@ -177,7 +177,13 @@ class TextProcessor:
             raise FileNotFoundError(f"Text file not found: {file_path}")
         
         try:
-            # Read text content
+            file_ext = Path(file_path).suffix.lower()
+            
+            # Handle JSON format regulatory text
+            if file_ext == '.json':
+                return self._process_json_regulatory_text(file_path)
+            
+            # Read text content for other formats
             text_content = self._read_text_file(file_path)
             
             # Clean and preprocess text
@@ -242,6 +248,189 @@ class TextProcessor:
         else:
             # Try to read as plain text
             return FileUtils.read_text(file_path)
+    
+    def _process_json_regulatory_text(self, file_path: str) -> Dict[str, Any]:
+        """Process JSON format regulatory text.
+        
+        Args:
+            file_path: Path to JSON file containing regulatory text
+            
+        Returns:
+            Dictionary containing processed regulatory data
+        """
+        import json
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                json_data = json.load(f)
+            
+            # Extract text content from JSON structure
+            text_content = self._extract_text_from_json(json_data)
+            
+            # Clean and preprocess text
+            cleaned_text = self._clean_text(text_content)
+            
+            # Create text chunks
+            chunks = self._create_text_chunks(cleaned_text)
+            
+            # Extract named entities
+            entities = self._extract_named_entities(cleaned_text)
+            
+            # Extract relationships
+            relationships = self._extract_relationships(cleaned_text)
+            
+            # Extract regulatory terms
+            regulatory_terms = self._extract_regulatory_terms(cleaned_text)
+            
+            # Generate embeddings
+            embeddings = self._generate_embeddings(chunks)
+            
+            # Extract structured regulatory data from JSON
+            structured_regulations = self._extract_structured_regulations(json_data)
+            
+            text_data = {
+                'file_path': file_path,
+                'format': 'json',
+                'original_json': json_data,
+                'original_text': text_content,
+                'cleaned_text': cleaned_text,
+                'chunks': [chunk.__dict__ for chunk in chunks],
+                'entities': [entity.__dict__ for entity in entities],
+                'relationships': [rel.__dict__ for rel in relationships],
+                'regulatory_terms': regulatory_terms,
+                'structured_regulations': structured_regulations,
+                'embeddings': embeddings,
+                'chunk_count': len(chunks),
+                'entity_count': len(entities),
+                'regulation_count': len(structured_regulations),
+                'processing_timestamp': self._get_timestamp()
+            }
+            
+            logger.info(f"JSON regulatory text processing completed: {len(structured_regulations)} regulations, {len(chunks)} chunks, {len(entities)} entities")
+            return text_data
+            
+        except Exception as e:
+            logger.error(f"Error processing JSON regulatory file: {e}")
+            raise
+    
+    def _extract_text_from_json(self, json_data: Dict[str, Any]) -> str:
+        """Extract text content from JSON regulatory data.
+        
+        Args:
+            json_data: JSON data containing regulatory information
+            
+        Returns:
+            Concatenated text content
+        """
+        text_parts = []
+        
+        def extract_text_recursive(obj, prefix="", context=""):
+            if isinstance(obj, dict):
+                for key, value in obj.items():
+                    # Handle specific keys that contain text content
+                    if key in ['title', 'description', 'content', 'text', 'requirement', 'regulation', 'evidence']:
+                        if isinstance(value, str) and value.strip():
+                            text_parts.append(f"{context}{key}: {value.strip()}")
+                        elif isinstance(value, list):
+                            for item in value:
+                                if isinstance(item, dict) and 'text' in item:
+                                    text_parts.append(f"{context}{key}: {item['text']}")
+                                elif isinstance(item, str) and item.strip():
+                                    text_parts.append(f"{context}{key}: {item.strip()}")
+                    # Handle height rules and other structured data
+                    elif key == 'height_rules' and isinstance(value, list):
+                        for rule in value:
+                            if isinstance(rule, dict):
+                                label = rule.get('label', 'rule')
+                                comparator = rule.get('comparator', '')
+                                threshold_min = rule.get('threshold_min_m', '')
+                                threshold_max = rule.get('threshold_max_m', '')
+                                unit = rule.get('unit_normalized', 'm')
+                                
+                                rule_text = f"Height rule ({label}): {comparator} {threshold_min}-{threshold_max} {unit}"
+                                text_parts.append(f"{context}height_rule: {rule_text}")
+                                
+                                # Extract evidence text
+                                if 'evidence' in rule and isinstance(rule['evidence'], list):
+                                    for evidence in rule['evidence']:
+                                        if isinstance(evidence, dict) and 'text' in evidence:
+                                            text_parts.append(f"{context}evidence: {evidence['text']}")
+                    # Handle area calculation rules
+                    elif key in ['area_calculation_rules', 'rules'] and isinstance(value, list):
+                        for rule in value:
+                            if isinstance(rule, dict):
+                                rule_type = rule.get('type', rule.get('label', 'rule'))
+                                description = rule.get('description', rule.get('text', ''))
+                                if description:
+                                    text_parts.append(f"{context}rule ({rule_type}): {description}")
+                    # Handle region-specific data
+                    elif key == 'per_region' and isinstance(value, dict):
+                        for region, region_data in value.items():
+                            region_context = f"{context}region_{region} - "
+                            extract_text_recursive(region_data, f"{prefix}{key}.", region_context)
+                    # Handle other nested structures
+                    elif isinstance(value, (dict, list)):
+                        new_context = f"{context}{key} - " if context else f"{key} - "
+                        extract_text_recursive(value, f"{prefix}{key}.", new_context)
+                    # Handle simple string values
+                    elif isinstance(value, str) and value.strip() and key not in ['region', 'source_name', 'source_path', 'unit_normalized', 'comparator']:
+                        text_parts.append(f"{context}{key}: {value.strip()}")
+            elif isinstance(obj, list):
+                for i, item in enumerate(obj):
+                    extract_text_recursive(item, f"{prefix}[{i}]", f"{context}[{i}] ")
+            elif isinstance(obj, str) and obj.strip():
+                text_parts.append(f"{context}{obj.strip()}")
+        
+        extract_text_recursive(json_data)
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_parts = []
+        for part in text_parts:
+            if part not in seen:
+                seen.add(part)
+                unique_parts.append(part)
+        
+        return "\n".join(unique_parts)
+    
+    def _extract_structured_regulations(self, json_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Extract structured regulatory information from JSON.
+        
+        Args:
+            json_data: JSON data containing regulatory information
+            
+        Returns:
+            List of structured regulation objects
+        """
+        regulations = []
+        
+        def extract_regulations_recursive(obj, path=""):
+            if isinstance(obj, dict):
+                # Check if this is a regulation object
+                if any(key in obj for key in ['regulation_id', 'code', 'section', 'requirement']):
+                    regulation = {
+                        'id': obj.get('regulation_id', obj.get('id', f"reg_{len(regulations)}")),
+                        'title': obj.get('title', obj.get('name', '')),
+                        'content': obj.get('content', obj.get('text', obj.get('requirement', ''))),
+                        'section': obj.get('section', obj.get('code', '')),
+                        'category': obj.get('category', obj.get('type', 'general')),
+                        'mandatory': obj.get('mandatory', obj.get('required', True)),
+                        'path': path,
+                        'metadata': {k: v for k, v in obj.items() if k not in ['regulation_id', 'id', 'title', 'name', 'content', 'text', 'requirement', 'section', 'code', 'category', 'type', 'mandatory', 'required']}
+                    }
+                    regulations.append(regulation)
+                else:
+                    # Recursively search in nested objects
+                    for key, value in obj.items():
+                        new_path = f"{path}.{key}" if path else key
+                        extract_regulations_recursive(value, new_path)
+            elif isinstance(obj, list):
+                for i, item in enumerate(obj):
+                    new_path = f"{path}[{i}]" if path else f"[{i}]"
+                    extract_regulations_recursive(item, new_path)
+        
+        extract_regulations_recursive(json_data)
+        return regulations
     
     def _read_pdf(self, file_path: str) -> str:
         """Read text from PDF file.
@@ -631,3 +820,53 @@ class TextProcessor:
         """
         relationships = text_data.get('relationships', [])
         return [rel for rel in relationships if rel.get('predicate', '').upper() == relation_type.upper()]
+    
+    def process_json_regulations(self, regulations_data: Dict[str, Any]) -> str:
+        """Convert JSON regulations data to text format for processing.
+        
+        Args:
+            regulations_data: JSON data containing regulatory information
+            
+        Returns:
+            Formatted text string containing regulatory content
+        """
+        text_parts = []
+        
+        # Add document info
+        if 'document_info' in regulations_data:
+            doc_info = regulations_data['document_info']
+            text_parts.append(f"Document: {doc_info.get('title', 'Unknown')}")
+            text_parts.append(f"Version: {doc_info.get('version', 'Unknown')}")
+            text_parts.append(f"Jurisdiction: {doc_info.get('jurisdiction', 'Unknown')}")
+            text_parts.append("")
+        
+        # Process sections
+        if 'sections' in regulations_data:
+            for section in regulations_data['sections']:
+                section_id = section.get('section_id', '')
+                title = section.get('title', '')
+                content = section.get('content', '')
+                
+                text_parts.append(f"Section {section_id}: {title}")
+                text_parts.append(content)
+                
+                # Add requirements
+                if 'requirements' in section:
+                    for req in section['requirements']:
+                        req_id = req.get('requirement_id', '')
+                        description = req.get('description', '')
+                        specification = req.get('specification', '')
+                        
+                        text_parts.append(f"  Requirement {req_id}: {description}")
+                        text_parts.append(f"  Specification: {specification}")
+                
+                text_parts.append("")
+        
+        # Add definitions
+        if 'definitions' in regulations_data:
+            text_parts.append("Definitions:")
+            for term, definition in regulations_data['definitions'].items():
+                text_parts.append(f"  {term}: {definition}")
+            text_parts.append("")
+        
+        return "\n".join(text_parts)

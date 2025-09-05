@@ -219,6 +219,48 @@ def example_comprehensive_alignment():
     
     return response
 
+def example_with_file_formats():
+    """Example showing usage with .ifc and .json file formats."""
+    logger = get_logger(__name__)
+    
+    print("\n" + "="*60)
+    print("FILE FORMAT EXAMPLE (.ifc + .json)")
+    print("="*60)
+    
+    # Note: This example shows the concept - actual files would need to be created
+    print("Command line usage examples:")
+    print("\n1. Process .ifc file with .json regulations:")
+    print("   python run_agent.py --query \"Analyze building compliance\" \\")
+    print("                       --ifc-file building_model.ifc \\")
+    print("                       --text-file building_codes.json")
+    
+    print("\n2. Supported file formats:")
+    print("   - IFC files: .ifc (Industry Foundation Classes)")
+    print("   - Regulatory text: .json, .txt, .md, .pdf, .docx")
+    
+    print("\n3. JSON regulatory format structure:")
+    json_example = {
+        "sections": [
+            {
+                "section": "4.1",
+                "regulations": [
+                    {
+                        "regulation_id": "4.1.1",
+                        "title": "Wall Requirements",
+                        "content": "Load-bearing walls shall have minimum thickness of 200mm",
+                        "mandatory": True,
+                        "category": "structural"
+                    }
+                ]
+            }
+        ]
+    }
+    
+    import json
+    print(json.dumps(json_example, indent=2))
+    
+    return None
+
 def main():
     """Run all examples."""
     logger = get_logger(__name__)
@@ -230,7 +272,8 @@ def main():
         ("Basic Usage", example_basic_usage),
         ("IFC Data Analysis", example_with_ifc_data),
         ("Regulatory Text Analysis", example_with_regulatory_text),
-        ("Comprehensive Alignment", example_comprehensive_alignment)
+        ("Comprehensive Alignment", example_comprehensive_alignment),
+        ("File Format Examples", example_with_file_formats)
     ]
     
     for example_name, example_func in examples:
@@ -250,10 +293,12 @@ def main():
     print("  ✓ Faster initialization and processing")
     print("  ✓ Direct semantic alignment using LLM and rule-based methods")
     print("  ✓ Suitable for standalone applications and testing")
+    print("  ✓ Supports .ifc and .json file formats")
     print("\nTo use in your code:")
     print("  from core.ifc_semantic_agent_no_kg import IFCSemanticAgentNoKG")
     print("  agent = IFCSemanticAgentNoKG()")
     print("  response = agent.process_query(query, ifc_data, regulatory_text)")
+    print("\nFor .ifc and .json file examples, see: example_new_formats.py")
 
 if __name__ == "__main__":
     main()

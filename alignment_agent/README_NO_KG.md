@@ -9,6 +9,9 @@
 - **快速启动**: 初始化速度更快，适合快速测试和开发
 - **轻量级**: 内存占用更少，适合资源受限环境
 - **独立运行**: 可以作为独立模块使用，不依赖复杂的图谱系统
+- **多种文件格式支持**:
+  - **IFC文件**: 标准.ifc格式 (Industry Foundation Classes)
+  - **法规文本**: .json, .txt, .md, .pdf, .docx格式
 - **直接语义对齐**: 使用LLM和规则方法进行直接的语义匹配
 
 ### ⚠️ 限制
@@ -32,6 +35,49 @@ response = agent.process_query(query)
 
 print(f"Answer: {response.final_answer}")
 print(f"Confidence: {response.confidence_score}")
+```
+
+### 1.1 使用文件格式
+
+#### 命令行方式
+
+```bash
+# 使用.ifc文件和.json法规文件
+python run_agent.py --query "分析建筑合规性" \
+                    --ifc-file building_model.ifc \
+                    --text-file building_codes.json
+
+# 使用PDF法规文件
+python run_agent.py --query "检查防火要求" \
+                    --ifc-file building_model.ifc \
+                    --text-file fire_safety_code.pdf
+
+# 交互模式
+python run_agent.py --interactive
+```
+
+#### 编程方式
+
+```python
+from data_processing import IFCProcessor, TextProcessor
+from core.ifc_semantic_agent_no_kg import IFCSemanticAgentNoKG
+
+# 处理IFC文件
+ifc_processor = IFCProcessor()
+ifc_data = ifc_processor.process_ifc_file('building_model.ifc')
+
+# 处理JSON法规文件
+text_processor = TextProcessor()
+regulatory_data = text_processor.process_text_file('building_codes.json')
+regulatory_text = regulatory_data.get('cleaned_text', '')
+
+# 使用代理进行分析
+agent = IFCSemanticAgentNoKG()
+response = agent.process_query(
+    query="检查结构要求合规性",
+    ifc_data=ifc_data,
+    regulatory_text=regulatory_text
+)
 ```
 
 ### 2. 使用IFC数据
@@ -85,6 +131,36 @@ response = agent.process_query(
 
 print(f"Semantic mappings found: {len(response.semantic_mappings)}")
 print(f"Knowledge sources: {response.knowledge_sources}")
+```
+
+### 5. 多种文件格式示例
+
+```python
+# 处理不同格式的法规文件
+from data_processing import TextProcessor
+
+text_processor = TextProcessor()
+
+# 处理PDF文件
+pdf_data = text_processor.process_text_file('building_code.pdf')
+response_pdf = agent.process_query(
+    query="提取防火安全要求",
+    regulatory_text=pdf_data['cleaned_text']
+)
+
+# 处理Word文档
+docx_data = text_processor.process_text_file('structural_requirements.docx')
+response_docx = agent.process_query(
+    query="分析结构设计标准",
+    regulatory_text=docx_data['cleaned_text']
+)
+
+# 处理Markdown文件
+md_data = text_processor.process_text_file('accessibility_guidelines.md')
+response_md = agent.process_query(
+    query="检查无障碍设计要求",
+    regulatory_text=md_data['cleaned_text']
+)
 ```
 
 ## 🔧 可用功能

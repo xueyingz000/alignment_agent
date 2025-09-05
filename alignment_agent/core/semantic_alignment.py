@@ -71,8 +71,8 @@ class SemanticAlignment:
             self.config.update('semantic_alignment', config)
         
         # Get alignment configuration
-        self.similarity_threshold = self.config.get('semantic_alignment.similarity_threshold', 0.6)
-        self.confidence_threshold = self.config.get('semantic_alignment.confidence_threshold', 0.7)
+        self.similarity_threshold = self.config.get('semantic_alignment.similarity_threshold', 0.3)
+        self.confidence_threshold = self.config.get('semantic_alignment.confidence_threshold', 0.4)
         self.alignment_methods = self.config.get('semantic_alignment.methods', ['lexical', 'semantic', 'contextual'])
         
         # Initialize vectorizer for semantic similarity
@@ -109,35 +109,45 @@ class SemanticAlignment:
             Dictionary of predefined mappings
         """
         mappings = {
-            # Wall mappings with context disambiguation
+            # Wall mappings with context disambiguation (English and Chinese)
             'IfcWall': {
-                'regulatory_terms': ['wall', 'partition', 'load-bearing wall', 'curtain wall', 'shear wall'],
+                'regulatory_terms': [
+                    # English terms
+                    'wall', 'partition', 'load-bearing wall', 'curtain wall', 'shear wall', 'exterior wall',
+                    # Chinese terms
+                    '墙', '墙体', '外墙', '内墙', '承重墙', '隔墙', '幕墙', '剪力墙', '建筑墙体', '墙面'
+                ],
                 'disambiguation_criteria': {
-                    'structural': ['load-bearing', 'structural', 'bearing', 'support'],
-                    'non_structural': ['partition', 'non-bearing', 'interior'],
-                    'exterior': ['exterior', 'external', 'facade', 'curtain'],
-                    'fire': ['fire wall', 'fire-rated', 'fire resistance']
+                    'structural': ['load-bearing', 'structural', 'bearing', 'support', '承重', '结构', '支撑'],
+                    'non_structural': ['partition', 'non-bearing', 'interior', '隔墙', '非承重', '内部'],
+                    'exterior': ['exterior', 'external', 'facade', 'curtain', '外墙', '外部', '立面', '幕墙'],
+                    'fire': ['fire wall', 'fire-rated', 'fire resistance', '防火墙', '防火', '耐火']
                 },
                 'attributes': {
-                    'thickness': ['thickness', 'width', 'depth'],
-                    'height': ['height', 'elevation'],
-                    'material': ['material', 'construction', 'composition']
+                    'thickness': ['thickness', 'width', 'depth', '厚度', '宽度', '深度'],
+                    'height': ['height', 'elevation', '高度', '标高'],
+                    'material': ['material', 'construction', 'composition', '材料', '构造', '组成']
                 }
             },
             
-            # Slab mappings with functional disambiguation
+            # Slab mappings with functional disambiguation (English and Chinese)
             'IfcSlab': {
-                'regulatory_terms': ['slab', 'floor', 'platform', 'deck', 'terrace', 'balcony'],
+                'regulatory_terms': [
+                    # English terms
+                    'slab', 'floor', 'platform', 'deck', 'terrace', 'balcony',
+                    # Chinese terms
+                    '楼板', '地板', '平台', '甲板', '露台', '阳台', '板', '楼面', '地面'
+                ],
                 'disambiguation_criteria': {
-                    'floor': ['floor', 'flooring', 'ground'],
-                    'roof': ['roof', 'roofing', 'top'],
-                    'platform': ['platform', 'equipment', 'mechanical'],
-                    'structural': ['structural', 'load-bearing']
+                    'floor': ['floor', 'flooring', 'ground', '楼板', '地板', '地面'],
+                    'roof': ['roof', 'roofing', 'top', '屋面', '屋顶', '顶部'],
+                    'platform': ['platform', 'equipment', 'mechanical', '平台', '设备', '机械'],
+                    'structural': ['structural', 'load-bearing', '结构', '承重']
                 },
                 'attributes': {
-                    'thickness': ['thickness', 'depth'],
-                    'span': ['span', 'length', 'width'],
-                    'load_capacity': ['load', 'capacity', 'bearing']
+                    'thickness': ['thickness', 'depth', '厚度', '深度'],
+                    'span': ['span', 'length', 'width', '跨度', '长度', '宽度'],
+                    'load_capacity': ['load', 'capacity', 'bearing', '荷载', '承载力', '承重']
                 }
             },
             
@@ -228,6 +238,26 @@ class SemanticAlignment:
                     'area': ['area', 'glazed area'],
                     'u_value': ['u-value', 'thermal transmittance'],
                     'shgc': ['shgc', 'solar heat gain']
+                }
+            },
+            
+            # Generic building terms mapping for better Chinese support
+            'IfcBuildingElement': {
+                'regulatory_terms': [
+                    # English terms
+                    'building', 'construction', 'structure', 'element', 'component',
+                    # Chinese terms
+                    '建筑', '建设', '构造', '结构', '构件', '组件', '建筑物', '建筑构件', '建筑元素'
+                ],
+                'disambiguation_criteria': {
+                    'structural': ['structural', 'load-bearing', '结构', '承重'],
+                    'architectural': ['architectural', 'design', '建筑', '设计'],
+                    'functional': ['functional', 'service', '功能', '服务']
+                },
+                'attributes': {
+                    'area': ['area', 'size', '面积', '尺寸'],
+                    'height': ['height', 'elevation', '高度', '标高'],
+                    'material': ['material', 'construction', '材料', '构造']
                 }
             }
         }
@@ -347,10 +377,28 @@ class SemanticAlignment:
             
             # Find potential regulatory matches
             for reg_entity in regulatory_entities:
-                if reg_entity.label in ['BUILDING_COMPONENT', 'SPATIAL_ELEMENT']:
+                # Handle both Entity objects and dictionary format
+                if hasattr(reg_entity, 'label'):
+                    # Entity object format
+                    reg_label = reg_entity.label
+                    reg_text = reg_entity.text
+                    reg_context = getattr(reg_entity, 'context', '')
+                    reg_attributes = getattr(reg_entity, 'attributes', {})
+                else:
+                    # Dictionary format
+                    reg_label = reg_entity.get('label', '')
+                    reg_text = reg_entity.get('text', '')
+                    reg_context = reg_entity.get('context', '')
+                    reg_attributes = reg_entity.get('attributes', {})
+                
+                # Check if this is a relevant entity type or try all entities
+                if (reg_label in ['BUILDING_COMPONENT', 'SPATIAL_ELEMENT'] or 
+                    reg_label in ['ORG', 'PRODUCT', 'FACILITY', 'GPE'] or
+                    len(reg_text) > 3):  # Include entities with meaningful text
+                    
                     alignment = self._calculate_entity_alignment(
                         ifc_type, ifc_name, ifc_context,
-                        reg_entity.text, reg_entity.context, reg_entity.attributes
+                        reg_text, reg_context, reg_attributes
                     )
                     
                     if alignment and alignment.confidence_score >= self.confidence_threshold:
@@ -468,10 +516,14 @@ class SemanticAlignment:
             mapping_info = self.predefined_mappings[ifc_type]
             regulatory_terms = mapping_info['regulatory_terms']
             
-            # Check for direct term match
+            # Check for direct term match (more flexible matching)
             reg_text_lower = reg_text.lower()
             for term in regulatory_terms:
-                if term.lower() in reg_text_lower or reg_text_lower in term.lower():
+                term_lower = term.lower()
+                # Check for partial matches and related terms
+                if (term_lower in reg_text_lower or reg_text_lower in term_lower or
+                    any(word in reg_text_lower for word in term_lower.split()) or
+                    any(word in term_lower for word in reg_text_lower.split() if len(word) > 2)):
                     # Calculate confidence based on context disambiguation
                     confidence = self._calculate_context_confidence(
                         ifc_context, reg_context, mapping_info.get('disambiguation_criteria', {})
@@ -499,6 +551,44 @@ class SemanticAlignment:
                             'ifc_name': ifc_name,
                             'regulatory_attributes': reg_attributes,
                             'mapping_method': 'predefined'
+                        }
+                    )
+        
+        # Check generic building terms if no specific mapping found
+        if 'IfcBuildingElement' in self.predefined_mappings:
+            generic_mapping = self.predefined_mappings['IfcBuildingElement']
+            generic_terms = generic_mapping['regulatory_terms']
+            
+            reg_text_lower = reg_text.lower()
+            for term in generic_terms:
+                term_lower = term.lower()
+                # Check for partial matches with generic building terms
+                if (term_lower in reg_text_lower or reg_text_lower in term_lower or
+                    any(word in reg_text_lower for word in term_lower.split()) or
+                    any(word in term_lower for word in reg_text_lower.split() if len(word) > 1)):
+                    
+                    # Calculate confidence for generic match (lower than specific match)
+                    confidence = 0.6  # Base confidence for generic matches
+                    semantic_sim = self._calculate_semantic_similarity(ifc_name, reg_text)
+                    context_sim = self._calculate_semantic_similarity(ifc_context, reg_context)
+                    
+                    # Boost confidence if semantic similarity is high
+                    if semantic_sim > 0.3:
+                        confidence = min(0.8, confidence + semantic_sim * 0.3)
+                    
+                    return AlignmentResult(
+                        ifc_entity=ifc_type,
+                        regulatory_entity=reg_text,
+                        alignment_type='ENTITY',
+                        confidence_score=confidence,
+                        semantic_similarity=semantic_sim,
+                        context_similarity=context_sim,
+                        alignment_evidence=[f"Generic building term match: {term}"],
+                        disambiguation_criteria=[],
+                        attributes={
+                            'ifc_name': ifc_name,
+                            'regulatory_attributes': reg_attributes,
+                            'mapping_method': 'generic_building_term'
                         }
                     )
         

@@ -87,9 +87,13 @@ ifc_processing:
 
 # Text Processing Configuration
 text_processing:
-  supported_formats: ["txt", "md", "pdf", "docx"]
+  supported_formats: ["txt", "md", "pdf", "docx", "json"]
   chunk_size: 512
   chunk_overlap: 50
+  json_regulatory:
+    extract_fields: ["title", "description", "content", "text", "requirement", "regulation"]
+    regulation_keys: ["regulation_id", "code", "section", "requirement"]
+    mandatory_default: true
   min_chunk_length: 100
   max_chunks: 1000
   language: "en"

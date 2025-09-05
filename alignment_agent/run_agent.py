@@ -223,17 +223,46 @@ def run_single_query(agent: IFCSemanticAgent, query: str, ifc_file: Optional[str
     ifc_data = None
     if ifc_file:
         print(f"Loading IFC file: {ifc_file}")
-        ifc_content = load_file_content(ifc_file)
-        if ifc_content:
-            # For now, treat as text content
-            # In a real implementation, you'd parse the IFC file
-            ifc_data = {"raw_content": ifc_content}
+        file_ext = Path(ifc_file).suffix.lower()
+        if file_ext == '.ifc':
+            # Process IFC file using IFCProcessor
+            from data_processing import IFCProcessor
+            ifc_processor = IFCProcessor()
+            try:
+                ifc_data = ifc_processor.process_ifc_file(ifc_file)
+                print(f"IFC file processed: {ifc_data.get('entity_count', 0)} entities extracted")
+            except Exception as e:
+                print(f"Error processing IFC file: {e}")
+                # Fallback to raw content
+                ifc_content = load_file_content(ifc_file)
+                if ifc_content:
+                    ifc_data = {"raw_content": ifc_content}
+        else:
+            # For other formats, treat as text content
+            ifc_content = load_file_content(ifc_file)
+            if ifc_content:
+                ifc_data = {"raw_content": ifc_content}
     
     # Load regulatory text if provided
     regulatory_text = None
     if text_file:
         print(f"Loading text file: {text_file}")
-        regulatory_text = load_file_content(text_file)
+        file_ext = Path(text_file).suffix.lower()
+        if file_ext == '.json':
+            # Process JSON regulatory file using TextProcessor
+            from data_processing import TextProcessor
+            text_processor = TextProcessor()
+            try:
+                text_data = text_processor.process_text_file(text_file)
+                regulatory_text = text_data.get('cleaned_text', '')
+                print(f"JSON regulatory file processed: {text_data.get('regulation_count', 0)} regulations, {text_data.get('chunk_count', 0)} chunks")
+            except Exception as e:
+                print(f"Error processing JSON regulatory file: {e}")
+                # Fallback to raw content
+                regulatory_text = load_file_content(text_file)
+        else:
+            # For other formats, load as plain text
+            regulatory_text = load_file_content(text_file)
     
     # Process query
     response = agent.process_query(
